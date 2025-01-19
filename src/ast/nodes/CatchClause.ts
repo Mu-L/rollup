@@ -1,6 +1,6 @@
-import CatchScope from '../scopes/CatchScope';
-import type Scope from '../scopes/Scope';
-import type BlockStatement from './BlockStatement';
+import type ChildScope from '../scopes/ChildScope';
+import ParameterScope from '../scopes/ParameterScope';
+import BlockStatement from './BlockStatement';
 import type * as NodeType from './NodeType';
 import { UNKNOWN_EXPRESSION } from './shared/Expression';
 import { type GenericEsTreeNode, NodeBase } from './shared/Node';
@@ -10,26 +10,26 @@ export default class CatchClause extends NodeBase {
 	declare body: BlockStatement;
 	declare param: PatternNode | null;
 	declare preventChildBlockScope: true;
-	declare scope: CatchScope;
+	declare scope: ParameterScope;
 	declare type: NodeType.tCatchClause;
 
-	createScope(parentScope: Scope): void {
-		this.scope = new CatchScope(parentScope, this.context);
+	createScope(parentScope: ChildScope): void {
+		this.scope = new ParameterScope(parentScope, true);
 	}
 
-	parseNode(esTreeNode: GenericEsTreeNode): void {
-		// Parameters need to be declared first as the logic is that initializers
-		// of hoisted body variables are associated with parameters of the same
-		// name instead of the variable
-		const { param } = esTreeNode;
+	parseNode(esTreeNode: GenericEsTreeNode): this {
+		const { body, param, type } = esTreeNode;
+		this.type = type as NodeType.tCatchClause;
 		if (param) {
-			(this.param as GenericEsTreeNode) = new (this.context.getNodeConstructor(param.type))(
-				param,
+			this.param = new (this.scope.context.getNodeConstructor(param.type))(
 				this,
 				this.scope
-			);
+			).parseNode(param) as unknown as PatternNode;
 			this.param!.declare('parameter', UNKNOWN_EXPRESSION);
 		}
-		super.parseNode(esTreeNode);
+		this.body = new BlockStatement(this, this.scope.bodyScope).parseNode(body);
+		return super.parseNode(esTreeNode);
 	}
 }
+
+CatchClause.prototype.preventChildBlockScope = true;

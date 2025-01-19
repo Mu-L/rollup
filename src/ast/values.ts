@@ -5,7 +5,7 @@ import {
 	INTERACTION_CALLED,
 	NODE_INTERACTION_UNKNOWN_CALL
 } from './NodeInteractions';
-import type { LiteralValue } from './nodes/Literal';
+import type { LiteralValueOrBigInt } from './nodes/Literal';
 import {
 	ExpressionEntity,
 	UNKNOWN_EXPRESSION,
@@ -25,16 +25,14 @@ export interface MemberDescription {
 	returns: ExpressionEntity;
 }
 
-export interface MemberDescriptions {
-	[key: string]: MemberDescription;
-}
+export type MemberDescriptions = Record<string, MemberDescription>;
 
 interface RawMemberDescription {
 	value: MemberDescription;
 }
 
 function assembleMemberDescriptions(
-	memberDescriptions: { [key: string]: RawMemberDescription },
+	memberDescriptions: Record<string, RawMemberDescription>,
 	inheritedDescriptions: MemberDescriptions | null = null
 ): MemberDescriptions {
 	return Object.create(inheritedDescriptions, memberDescriptions);
@@ -268,7 +266,7 @@ export const literalStringMembers: MemberDescriptions = assembleMemberDescriptio
 	objectMembers
 );
 
-export function getLiteralMembersForValue<T extends LiteralValue = LiteralValue>(
+export function getLiteralMembersForValue<T extends LiteralValueOrBigInt = LiteralValueOrBigInt>(
 	value: T
 ): MemberDescriptions {
 	if (value instanceof RegExp) {

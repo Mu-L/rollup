@@ -10,6 +10,7 @@ import {
 	UnknownKey,
 	UnknownNonAccessorKey
 } from '../../utils/PathTracker';
+import { Flag, isFlagSet, setFlag } from './BitFlags';
 import type { LiteralValueOrUnknown } from './Expression';
 import {
 	deoptimizeInteraction,
@@ -26,21 +27,38 @@ export interface ObjectProperty {
 	property: ExpressionEntity;
 }
 
-export interface PropertyMap {
-	[key: string]: ExpressionEntity[];
-}
+export type PropertyMap = Record<string, ExpressionEntity[]>;
 const INTEGER_REG_EXP = /^\d+$/;
 
 export class ObjectEntity extends ExpressionEntity {
+	private get hasLostTrack(): boolean {
+		return isFlagSet(this.flags, Flag.hasLostTrack);
+	}
+	private set hasLostTrack(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.hasLostTrack, value);
+	}
+
+	private get hasUnknownDeoptimizedInteger(): boolean {
+		return isFlagSet(this.flags, Flag.hasUnknownDeoptimizedInteger);
+	}
+	private set hasUnknownDeoptimizedInteger(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.hasUnknownDeoptimizedInteger, value);
+	}
+
+	private get hasUnknownDeoptimizedProperty(): boolean {
+		return isFlagSet(this.flags, Flag.hasUnknownDeoptimizedProperty);
+	}
+	private set hasUnknownDeoptimizedProperty(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.hasUnknownDeoptimizedProperty, value);
+	}
+
 	private readonly additionalExpressionsToBeDeoptimized = new Set<ExpressionEntity>();
 	private readonly allProperties: ExpressionEntity[] = [];
 	private readonly deoptimizedPaths: Record<string, boolean> = Object.create(null);
 	private readonly expressionsToBeDeoptimizedByKey: Record<string, DeoptimizableEntity[]> =
 		Object.create(null);
 	private readonly gettersByKey: PropertyMap = Object.create(null);
-	private hasLostTrack = false;
-	private hasUnknownDeoptimizedInteger = false;
-	private hasUnknownDeoptimizedProperty = false;
+
 	private readonly propertiesAndGettersByKey: PropertyMap = Object.create(null);
 	private readonly propertiesAndSettersByKey: PropertyMap = Object.create(null);
 	private readonly settersByKey: PropertyMap = Object.create(null);
@@ -115,10 +133,10 @@ export class ObjectEntity extends ExpressionEntity {
 						this.propertiesAndGettersByKey,
 						this.propertiesAndGettersByKey,
 						this.unmatchablePropertiesAndGetters
-				  ]
+					]
 				: type === INTERACTION_ACCESSED
-				? [this.propertiesAndGettersByKey, this.gettersByKey, this.unmatchableGetters]
-				: [this.propertiesAndSettersByKey, this.settersByKey, this.unmatchableSetters];
+					? [this.propertiesAndGettersByKey, this.gettersByKey, this.unmatchableGetters]
+					: [this.propertiesAndSettersByKey, this.settersByKey, this.unmatchableSetters];
 
 		if (typeof key === 'string') {
 			if (propertiesForExactMatchByKey[key]) {
@@ -198,10 +216,9 @@ export class ObjectEntity extends ExpressionEntity {
 		}
 		const key = path[0];
 		if (path.length === 1) {
-			if (typeof key !== 'string') {
-				if (key === UnknownInteger) {
-					return this.deoptimizeIntegerProperties();
-				}
+			if (key === UnknownInteger) {
+				return this.deoptimizeIntegerProperties();
+			} else if (typeof key !== 'string') {
 				return this.deoptimizeAllProperties(key === UnknownNonAccessorKey);
 			}
 			if (!this.deoptimizedPaths[key]) {
@@ -223,11 +240,11 @@ export class ObjectEntity extends ExpressionEntity {
 			? [
 					...(this.propertiesAndGettersByKey[key] || this.unmatchablePropertiesAndGetters),
 					...(this.settersByKey[key] || this.unmatchableSetters)
-			  ]
+				]
 			: this.allProperties) {
 			property.deoptimizePath(subPath);
 		}
-		this.prototypeExpression?.deoptimizePath(path.length === 1 ? [...path, UnknownKey] : path);
+		this.prototypeExpression?.deoptimizePath(path.length === 1 ? [path[0], UnknownKey] : path);
 	}
 
 	getLiteralValueAtPath(

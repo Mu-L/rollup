@@ -1,13 +1,20 @@
 import type * as NodeType from './NodeType';
+import { Flag, isFlagSet, setFlag } from './shared/BitFlags';
 import { type GenericEsTreeNode, NodeBase } from './shared/Node';
 
 export default class TemplateElement extends NodeBase {
-	declare tail: boolean;
 	declare type: NodeType.tTemplateElement;
 	declare value: {
-		cooked: string | null;
+		cooked: string | undefined;
 		raw: string;
 	};
+
+	get tail(): boolean {
+		return isFlagSet(this.flags, Flag.tail);
+	}
+	set tail(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.tail, value);
+	}
 
 	// Do not try to bind value
 	bind(): void {}
@@ -20,9 +27,9 @@ export default class TemplateElement extends NodeBase {
 		this.included = true;
 	}
 
-	parseNode(esTreeNode: GenericEsTreeNode): void {
+	parseNode(esTreeNode: GenericEsTreeNode): this {
 		this.value = esTreeNode.value;
-		super.parseNode(esTreeNode);
+		return super.parseNode(esTreeNode);
 	}
 
 	render(): void {}

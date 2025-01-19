@@ -1,7 +1,7 @@
 import type MagicString from 'magic-string';
 import ExternalModule from '../../ExternalModule';
 import type Module from '../../Module';
-import type { GetInterop, NormalizedOutputOptions } from '../../rollup/types';
+import type { AstNode, GetInterop, NormalizedOutputOptions } from '../../rollup/types';
 import type { PluginDriver } from '../../utils/PluginDriver';
 import { EMPTY_ARRAY } from '../../utils/blank';
 import type { GenerateCodeSnippets } from '../../utils/generateCodeSnippets';
@@ -40,6 +40,7 @@ export default class ImportExpression extends NodeBase {
 	inlineNamespace: NamespaceVariable | null = null;
 	declare source: ExpressionNode;
 	declare type: NodeType.tImportExpression;
+	declare sourceAstNode: AstNode;
 
 	private attributes: string | null | true = null;
 	private mechanism: DynamicImportMechanism | null = null;
@@ -153,19 +154,20 @@ export default class ImportExpression extends NodeBase {
 	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren): void {
 		if (!this.included) {
 			this.included = true;
-			this.context.includeDynamicImport(this);
+			this.scope.context.includeDynamicImport(this);
 			this.scope.addAccessedDynamicImport(this);
 		}
 		this.source.include(context, includeChildrenRecursively);
 	}
 
 	initialise(): void {
-		this.context.addDynamicImport(this);
+		super.initialise();
+		this.scope.context.addDynamicImport(this);
 	}
 
-	parseNode(esTreeNode: GenericEsTreeNode): void {
-		// Keep the source AST to be used by renderDynamicImport
-		super.parseNode(esTreeNode, ['source']);
+	parseNode(esTreeNode: GenericEsTreeNode): this {
+		this.sourceAstNode = esTreeNode.source;
+		return super.parseNode(esTreeNode);
 	}
 
 	render(code: MagicString, options: RenderOptions): void {
@@ -278,7 +280,7 @@ export default class ImportExpression extends NodeBase {
 			{
 				customResolution: typeof this.resolution === 'string' ? this.resolution : null,
 				format,
-				moduleId: this.context.module.id,
+				moduleId: this.scope.context.module.id,
 				targetModuleId:
 					this.resolution && typeof this.resolution !== 'string' ? this.resolution.id : null
 			}
@@ -374,10 +376,10 @@ function getInteropHelper(
 	return exportMode === 'external'
 		? namespaceInteropHelpersByInteropType[
 				interop(resolution instanceof ExternalModule ? resolution.id : null)
-		  ]
+			]
 		: exportMode === 'default'
-		? INTEROP_NAMESPACE_DEFAULT_ONLY_VARIABLE
-		: null;
+			? INTEROP_NAMESPACE_DEFAULT_ONLY_VARIABLE
+			: null;
 }
 
 const accessedImportGlobals: Record<string, string[]> = {

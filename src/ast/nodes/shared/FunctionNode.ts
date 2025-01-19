@@ -1,6 +1,7 @@
 import { type HasEffectsContext, type InclusionContext } from '../../ExecutionContext';
 import type { NodeInteraction } from '../../NodeInteractions';
 import { INTERACTION_CALLED } from '../../NodeInteractions';
+import type ChildScope from '../../scopes/ChildScope';
 import FunctionScope from '../../scopes/FunctionScope';
 import type { ObjectPath, PathTracker } from '../../utils/PathTracker';
 import type BlockStatement from '../BlockStatement';
@@ -14,17 +15,16 @@ import { OBJECT_PROTOTYPE } from './ObjectPrototype';
 import type { PatternNode } from './Pattern';
 
 export default class FunctionNode extends FunctionBase {
-	declare async: boolean;
 	declare body: BlockStatement;
 	declare id: IdentifierWithVariable | null;
-	declare params: readonly PatternNode[];
+	declare params: PatternNode[];
 	declare preventChildBlockScope: true;
 	declare scope: FunctionScope;
 	protected objectEntity: ObjectEntity | null = null;
-	private declare constructedEntity: ObjectEntity;
+	declare private constructedEntity: ObjectEntity;
 
-	createScope(parentScope: FunctionScope): void {
-		this.scope = new FunctionScope(parentScope, this.context);
+	createScope(parentScope: ChildScope): void {
+		this.scope = new FunctionScope(parentScope);
 		this.constructedEntity = new ObjectEntity(Object.create(null), OBJECT_PROTOTYPE);
 		// This makes sure that all deoptimizations of "this" are applied to the
 		// constructed entity.

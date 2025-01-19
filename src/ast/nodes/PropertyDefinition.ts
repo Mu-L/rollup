@@ -2,8 +2,11 @@ import type { DeoptimizableEntity } from '../DeoptimizableEntity';
 import type { HasEffectsContext } from '../ExecutionContext';
 import type { NodeInteraction, NodeInteractionCalled } from '../NodeInteractions';
 import type { ObjectPath, PathTracker } from '../utils/PathTracker';
+import { checkEffectForNodes } from '../utils/checkEffectForNodes';
+import type Decorator from './Decorator';
 import type * as NodeType from './NodeType';
 import type PrivateIdentifier from './PrivateIdentifier';
+import { Flag, isFlagSet, setFlag } from './shared/BitFlags';
 import {
 	type ExpressionEntity,
 	type LiteralValueOrUnknown,
@@ -13,11 +16,18 @@ import {
 import { type ExpressionNode, NodeBase } from './shared/Node';
 
 export default class PropertyDefinition extends NodeBase {
-	declare computed: boolean;
 	declare key: ExpressionNode | PrivateIdentifier;
 	declare static: boolean;
 	declare type: NodeType.tPropertyDefinition;
 	declare value: ExpressionNode | null;
+	declare decorators: Decorator[];
+
+	get computed(): boolean {
+		return isFlagSet(this.flags, Flag.computed);
+	}
+	set computed(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.computed, value);
+	}
 
 	deoptimizeArgumentsOnInteractionAtPath(
 		interaction: NodeInteraction,
@@ -53,7 +63,11 @@ export default class PropertyDefinition extends NodeBase {
 	}
 
 	hasEffects(context: HasEffectsContext): boolean {
-		return this.key.hasEffects(context) || (this.static && !!this.value?.hasEffects(context));
+		return (
+			this.key.hasEffects(context) ||
+			(this.static && !!this.value?.hasEffects(context)) ||
+			checkEffectForNodes(this.decorators, context)
+		);
 	}
 
 	hasEffectsOnInteractionAtPath(

@@ -39,25 +39,26 @@ export default class ExportDefaultDeclaration extends NodeBase {
 	declare type: NodeType.tExportDefaultDeclaration;
 	declare variable: ExportDefaultVariable;
 
-	private declare declarationName: string | undefined;
+	declare private declarationName: string | undefined;
 
 	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren): void {
 		super.include(context, includeChildrenRecursively);
 		if (includeChildrenRecursively) {
-			this.context.includeVariableInModule(this.variable);
+			this.scope.context.includeVariableInModule(this.variable);
 		}
 	}
 
 	initialise(): void {
+		super.initialise();
 		const declaration = this.declaration as FunctionDeclaration | ClassDeclaration;
 		this.declarationName =
 			(declaration.id && declaration.id.name) || (this.declaration as Identifier).name;
 		this.variable = this.scope.addExportDefaultDeclaration(
-			this.declarationName || this.context.getModuleName(),
+			this.declarationName || this.scope.context.getModuleName(),
 			this,
-			this.context
+			this.scope.context
 		);
-		this.context.addExport(this);
+		this.scope.context.addExport(this);
 	}
 
 	removeAnnotations(code: MagicString) {
@@ -146,7 +147,9 @@ export default class ExportDefaultDeclaration extends NodeBase {
 			code.overwrite(
 				this.start,
 				declarationStart,
-				`${cnst} ${this.variable.getName(getPropertyAccess)} = exports('${systemExportNames[0]}', `
+				`${cnst} ${this.variable.getName(getPropertyAccess)} = exports(${JSON.stringify(
+					systemExportNames[0]
+				)}, `
 			);
 			code.appendRight(
 				hasTrailingSemicolon ? this.end - 1 : this.end,

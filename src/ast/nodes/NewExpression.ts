@@ -1,4 +1,5 @@
 import type MagicString from 'magic-string';
+import type { NormalizedTreeshakingOptions } from '../../rollup/types';
 import { renderCallArguments } from '../../utils/renderCallArguments';
 import type { RenderOptions } from '../../utils/renderHelpers';
 import type { HasEffectsContext, InclusionContext } from '../ExecutionContext';
@@ -13,23 +14,22 @@ export default class NewExpression extends NodeBase {
 	declare arguments: ExpressionNode[];
 	declare callee: ExpressionNode;
 	declare type: NodeType.tNewExpression;
-	private declare interaction: NodeInteractionCalled;
+	declare private interaction: NodeInteractionCalled;
+	/** Marked with #__PURE__ annotation */
+	declare annotationPure?: boolean;
 
 	hasEffects(context: HasEffectsContext): boolean {
-		try {
-			for (const argument of this.arguments) {
-				if (argument.hasEffects(context)) return true;
-			}
-			if (this.annotationPure) {
-				return false;
-			}
-			return (
-				this.callee.hasEffects(context) ||
-				this.callee.hasEffectsOnInteractionAtPath(EMPTY_PATH, this.interaction, context)
-			);
-		} finally {
-			if (!this.deoptimized) this.applyDeoptimizations();
+		if (!this.deoptimized) this.applyDeoptimizations();
+		for (const argument of this.arguments) {
+			if (argument.hasEffects(context)) return true;
 		}
+		if (this.annotationPure) {
+			return false;
+		}
+		return (
+			this.callee.hasEffects(context) ||
+			this.callee.hasEffectsOnInteractionAtPath(EMPTY_PATH, this.interaction, context)
+		);
 	}
 
 	hasEffectsOnInteractionAtPath(path: ObjectPath, { type }: NodeInteraction): boolean {
@@ -48,11 +48,18 @@ export default class NewExpression extends NodeBase {
 	}
 
 	initialise(): void {
+		super.initialise();
 		this.interaction = {
 			args: [null, ...this.arguments],
 			type: INTERACTION_CALLED,
 			withNew: true
 		};
+		if (
+			this.annotations &&
+			(this.scope.context.options.treeshake as NormalizedTreeshakingOptions).annotations
+		) {
+			this.annotationPure = this.annotations.some(comment => comment.type === 'pure');
+		}
 	}
 
 	render(code: MagicString, options: RenderOptions) {
@@ -67,6 +74,6 @@ export default class NewExpression extends NodeBase {
 			EMPTY_PATH,
 			SHARED_RECURSION_TRACKER
 		);
-		this.context.requestTreeshakingPass();
+		this.scope.context.requestTreeshakingPass();
 	}
 }

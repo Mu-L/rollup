@@ -19,7 +19,7 @@ export default class TaggedTemplateExpression extends CallExpressionBase {
 	declare quasi: TemplateLiteral;
 	declare tag: ExpressionNode;
 	declare type: NodeType.tTaggedTemplateExpression;
-	private declare args: ExpressionEntity[];
+	declare private args: ExpressionEntity[];
 
 	bind(): void {
 		super.bind();
@@ -28,23 +28,20 @@ export default class TaggedTemplateExpression extends CallExpressionBase {
 			const variable = this.scope.findVariable(name);
 
 			if (variable.isNamespace) {
-				this.context.log(LOGLEVEL_WARN, logCannotCallNamespace(name), this.start);
+				this.scope.context.log(LOGLEVEL_WARN, logCannotCallNamespace(name), this.start);
 			}
 		}
 	}
 
 	hasEffects(context: HasEffectsContext): boolean {
-		try {
-			for (const argument of this.quasi.expressions) {
-				if (argument.hasEffects(context)) return true;
-			}
-			return (
-				this.tag.hasEffects(context) ||
-				this.tag.hasEffectsOnInteractionAtPath(EMPTY_PATH, this.interaction, context)
-			);
-		} finally {
-			if (!this.deoptimized) this.applyDeoptimizations();
+		if (!this.deoptimized) this.applyDeoptimizations();
+		for (const argument of this.quasi.expressions) {
+			if (argument.hasEffects(context)) return true;
 		}
+		return (
+			this.tag.hasEffects(context) ||
+			this.tag.hasEffectsOnInteractionAtPath(EMPTY_PATH, this.interaction, context)
+		);
 	}
 
 	include(context: InclusionContext, includeChildrenRecursively: IncludeChildren): void {
@@ -64,6 +61,7 @@ export default class TaggedTemplateExpression extends CallExpressionBase {
 	}
 
 	initialise(): void {
+		super.initialise();
 		this.args = [UNKNOWN_EXPRESSION, ...this.quasi.expressions];
 		this.interaction = {
 			args: [
@@ -87,7 +85,7 @@ export default class TaggedTemplateExpression extends CallExpressionBase {
 			EMPTY_PATH,
 			SHARED_RECURSION_TRACKER
 		);
-		this.context.requestTreeshakingPass();
+		this.scope.context.requestTreeshakingPass();
 	}
 
 	protected getReturnExpression(

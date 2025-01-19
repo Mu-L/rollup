@@ -13,7 +13,7 @@ import { NodeBase } from './shared/Node';
 export default class ThisExpression extends NodeBase {
 	declare type: NodeType.tThisExpression;
 	declare variable: Variable;
-	private declare alias: string | null;
+	declare private alias: string | null;
 
 	bind(): void {
 		this.variable = this.scope.findVariable('this');
@@ -45,15 +45,18 @@ export default class ThisExpression extends NodeBase {
 	include(): void {
 		if (!this.included) {
 			this.included = true;
-			this.context.includeVariableInModule(this.variable);
+			this.scope.context.includeVariableInModule(this.variable);
 		}
 	}
 
 	initialise(): void {
+		super.initialise();
 		this.alias =
-			this.scope.findLexicalBoundary() instanceof ModuleScope ? this.context.moduleContext : null;
+			this.scope.findLexicalBoundary() instanceof ModuleScope
+				? this.scope.context.moduleContext
+				: null;
 		if (this.alias === 'undefined') {
-			this.context.log(LOGLEVEL_WARN, logThisIsUndefined(), this.start);
+			this.scope.context.log(LOGLEVEL_WARN, logThisIsUndefined(), this.start);
 		}
 	}
 

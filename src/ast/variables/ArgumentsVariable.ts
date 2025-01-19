@@ -11,7 +11,7 @@ export default class ArgumentsVariable extends LocalVariable {
 	private deoptimizedArguments: ExpressionEntity[] = [];
 
 	constructor(context: AstContext) {
-		super('arguments', null, UNKNOWN_EXPRESSION, context);
+		super('arguments', null, UNKNOWN_EXPRESSION, context, 'other');
 	}
 
 	addArgumentToBeDeoptimized(argument: ExpressionEntity): void {

@@ -1,7 +1,7 @@
 import type ExternalModule from '../../ExternalModule';
 import type { NodeInteraction } from '../NodeInteractions';
 import { INTERACTION_ACCESSED } from '../NodeInteractions';
-import type Identifier from '../nodes/Identifier';
+import type IdentifierBase from '../nodes/shared/IdentifierBase';
 import type { ObjectPath } from '../utils/PathTracker';
 import Variable from './Variable';
 
@@ -16,7 +16,7 @@ export default class ExternalVariable extends Variable {
 		this.isNamespace = name === '*';
 	}
 
-	addReference(identifier: Identifier): void {
+	addReference(identifier: IdentifierBase): void {
 		this.referenced = true;
 		if (this.name === 'default' || this.name === '*') {
 			this.module.suggestName(identifier.name);
@@ -28,9 +28,7 @@ export default class ExternalVariable extends Variable {
 	}
 
 	include(): void {
-		if (!this.included) {
-			this.included = true;
-			this.module.used = true;
-		}
+		super.include();
+		this.module.used = true;
 	}
 }

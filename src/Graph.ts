@@ -1,21 +1,19 @@
 import flru from 'flru';
+import GlobalScope from './ast/scopes/GlobalScope';
+import { PathTracker } from './ast/utils/PathTracker';
 import type ExternalModule from './ExternalModule';
 import Module from './Module';
 import { ModuleLoader, type UnresolvedModule } from './ModuleLoader';
-import GlobalScope from './ast/scopes/GlobalScope';
-import { PathTracker } from './ast/utils/PathTracker';
 import type {
-	AstNode,
 	ModuleInfo,
 	ModuleJSON,
 	NormalizedInputOptions,
+	ProgramNode,
 	RollupCache,
 	RollupWatcher,
 	SerializablePluginCache,
 	WatchChangeHook
 } from './rollup/types';
-import { PluginDriver } from './utils/PluginDriver';
-import Queue from './utils/Queue';
 import { BuildPhase } from './utils/buildPhase';
 import { analyseModuleExecution } from './utils/executionOrder';
 import { LOGLEVEL_WARN } from './utils/logging';
@@ -25,8 +23,10 @@ import {
 	logImplicitDependantIsNotIncluded,
 	logMissingExport
 } from './utils/logs';
+import { PluginDriver } from './utils/PluginDriver';
 import type { PureFunctions } from './utils/pureFunctions';
 import { getPureFunctions } from './utils/pureFunctions';
+import Queue from './utils/Queue';
 import { timeEnd, timeStart } from './utils/timers';
 import { markModuleAndImpureDependenciesAsExecuted } from './utils/traverseStaticDependencies';
 
@@ -52,7 +52,7 @@ function normalizeEntryModules(
 }
 
 export default class Graph {
-	readonly astLru = flru<AstNode>(5);
+	readonly astLru = flru<ProgramNode>(5);
 	readonly cachedModules = new Map<string, ModuleJSON>();
 	readonly deoptimizationTracker = new PathTracker();
 	entryModules: Module[] = [];
@@ -70,7 +70,7 @@ export default class Graph {
 	private readonly externalModules: ExternalModule[] = [];
 	private implicitEntryModules: Module[] = [];
 	private modules: Module[] = [];
-	private declare pluginCache?: Record<string, SerializablePluginCache>;
+	declare private pluginCache?: Record<string, SerializablePluginCache>;
 
 	constructor(
 		private readonly options: NormalizedInputOptions,
@@ -151,6 +151,7 @@ export default class Graph {
 			throw new Error('You must supply options.input to rollup');
 		}
 		for (const module of this.modulesById.values()) {
+			module.cacheInfoGetters();
 			if (module instanceof Module) {
 				this.modules.push(module);
 			} else {
@@ -171,6 +172,7 @@ export default class Graph {
 				this.needsTreeshakingPass = false;
 				for (const module of this.modules) {
 					if (module.isExecuted) {
+						module.hasTreeShakingPassStarted = true;
 						if (module.info.moduleSideEffects === 'no-treeshake') {
 							module.includeAllInBundle();
 						} else {

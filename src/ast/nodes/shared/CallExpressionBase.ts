@@ -14,7 +14,7 @@ import {
 import { NodeBase } from './Node';
 
 export default abstract class CallExpressionBase extends NodeBase implements DeoptimizableEntity {
-	protected declare interaction: NodeInteractionCalled;
+	declare protected interaction: NodeInteractionCalled;
 	protected returnExpression: [expression: ExpressionEntity, isPure: boolean] | null = null;
 	private deoptimizableDependentExpressions: DeoptimizableEntity[] = [];
 	private expressionsToBeDeoptimized = new Set<ExpressionEntity>();
@@ -72,7 +72,7 @@ export default abstract class CallExpressionBase extends NodeBase implements Deo
 	deoptimizePath(path: ObjectPath): void {
 		if (
 			path.length === 0 ||
-			this.context.deoptimizationTracker.trackEntityAtPathAndGetIfTracked(path, this)
+			this.scope.context.deoptimizationTracker.trackEntityAtPathAndGetIfTracked(path, this)
 		) {
 			return;
 		}

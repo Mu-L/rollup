@@ -11,15 +11,16 @@ export default class ExpressionStatement extends StatementBase {
 	declare expression: ExpressionNode;
 
 	initialise(): void {
+		super.initialise();
 		if (
 			this.directive &&
 			this.directive !== 'use strict' &&
 			this.parent.type === NodeType.Program
 		) {
-			this.context.log(
+			this.scope.context.log(
 				LOGLEVEL_WARN,
 				// This is necessary, because either way (deleting or not) can lead to errors.
-				logModuleLevelDirective(this.directive, this.context.module.id),
+				logModuleLevelDirective(this.directive, this.scope.context.module.id),
 				this.start
 			);
 		}

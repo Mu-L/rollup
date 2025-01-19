@@ -23,7 +23,8 @@ export default class ImportDeclaration extends NodeBase {
 	}
 
 	initialise(): void {
-		this.context.addImport(this);
+		super.initialise();
+		this.scope.context.addImport(this);
 	}
 
 	render(code: MagicString, _options: RenderOptions, nodeRenderOptions?: NodeRenderOptions): void {

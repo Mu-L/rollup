@@ -35,6 +35,7 @@ import type * as NodeType from './NodeType';
 import type PrivateIdentifier from './PrivateIdentifier';
 import type SpreadElement from './SpreadElement';
 import type Super from './Super';
+import { Flag, isFlagSet, setFlag } from './shared/BitFlags';
 import {
 	deoptimizeInteraction,
 	type ExpressionEntity,
@@ -42,8 +43,9 @@ import {
 	UNKNOWN_RETURN_EXPRESSION,
 	UnknownValue
 } from './shared/Expression';
-import type { ChainElement, ExpressionNode, IncludeChildren } from './shared/Node';
-import { NodeBase } from './shared/Node';
+import type { ChainElement, ExpressionNode, IncludeChildren, SkippedChain } from './shared/Node';
+import { IS_SKIPPED_CHAIN, NodeBase } from './shared/Node';
+import { getChainElementLiteralValueAtPath } from './shared/chainElements';
 
 // To avoid infinite recursions
 const MAX_PATH_DEPTH = 7;
@@ -95,19 +97,49 @@ export default class MemberExpression
 	extends NodeBase
 	implements DeoptimizableEntity, ChainElement
 {
-	declare computed: boolean;
 	declare object: ExpressionNode | Super;
-	declare optional: boolean;
 	declare property: ExpressionNode | PrivateIdentifier;
 	declare propertyKey: ObjectPathKey | null;
 	declare type: NodeType.tMemberExpression;
 	variable: Variable | null = null;
-	protected declare assignmentInteraction: NodeInteractionAssigned;
-	private declare accessInteraction: NodeInteractionAccessed;
-	private assignmentDeoptimized = false;
-	private bound = false;
+	declare protected assignmentInteraction: NodeInteractionAssigned;
+	declare private accessInteraction: NodeInteractionAccessed;
 	private expressionsToBeDeoptimized: DeoptimizableEntity[] = [];
-	private isUndefined = false;
+
+	get computed(): boolean {
+		return isFlagSet(this.flags, Flag.computed);
+	}
+	set computed(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.computed, value);
+	}
+
+	get optional(): boolean {
+		return isFlagSet(this.flags, Flag.optional);
+	}
+	set optional(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.optional, value);
+	}
+
+	private get assignmentDeoptimized(): boolean {
+		return isFlagSet(this.flags, Flag.assignmentDeoptimized);
+	}
+	private set assignmentDeoptimized(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.assignmentDeoptimized, value);
+	}
+
+	private get bound(): boolean {
+		return isFlagSet(this.flags, Flag.bound);
+	}
+	private set bound(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.bound, value);
+	}
+
+	private get isUndefined(): boolean {
+		return isFlagSet(this.flags, Flag.isUndefined);
+	}
+	private set isUndefined(value: boolean) {
+		this.flags = setFlag(this.flags, Flag.isUndefined, value);
+	}
 
 	bind(): void {
 		this.bound = true;
@@ -117,7 +149,7 @@ export default class MemberExpression
 			const resolvedVariable = resolveNamespaceVariables(
 				baseVariable,
 				path!.slice(1),
-				this.context
+				this.scope.context
 			);
 			if (!resolvedVariable) {
 				super.bind();
@@ -197,6 +229,20 @@ export default class MemberExpression
 		return UnknownValue;
 	}
 
+	getLiteralValueAtPathAsChainElement(
+		path: ObjectPath,
+		recursionTracker: PathTracker,
+		origin: DeoptimizableEntity
+	): LiteralValueOrUnknown | SkippedChain {
+		if (this.variable) {
+			return this.variable.getLiteralValueAtPath(path, recursionTracker, origin);
+		}
+		if (this.isUndefined) {
+			return undefined;
+		}
+		return getChainElementLiteralValueAtPath(this, this.object, path, recursionTracker, origin);
+	}
+
 	getReturnExpressionWhenCalledAtPath(
 		path: ObjectPath,
 		interaction: NodeInteractionCalled,
@@ -233,6 +279,24 @@ export default class MemberExpression
 			this.object.hasEffects(context) ||
 			this.hasAccessEffect(context)
 		);
+	}
+
+	hasEffectsAsChainElement(context: HasEffectsContext): boolean | SkippedChain {
+		if (this.variable || this.isUndefined) return this.hasEffects(context);
+		const objectHasEffects =
+			'hasEffectsAsChainElement' in this.object
+				? (this.object as ChainElement).hasEffectsAsChainElement(context)
+				: this.object.hasEffects(context);
+		if (objectHasEffects === IS_SKIPPED_CHAIN) return IS_SKIPPED_CHAIN;
+		if (
+			this.optional &&
+			this.object.getLiteralValueAtPath(EMPTY_PATH, SHARED_RECURSION_TRACKER, this) == null
+		) {
+			return objectHasEffects || IS_SKIPPED_CHAIN;
+		}
+		// We only apply deoptimizations lazily once we know we are not skipping
+		if (!this.deoptimized) this.applyDeoptimizations();
+		return objectHasEffects || this.property.hasEffects(context) || this.hasAccessEffect(context);
 	}
 
 	hasEffectsAsAssignmentTarget(context: HasEffectsContext, checkAccess: boolean): boolean {
@@ -297,18 +361,9 @@ export default class MemberExpression
 	}
 
 	initialise(): void {
+		super.initialise();
 		this.propertyKey = getResolvablePropertyKey(this);
 		this.accessInteraction = { args: [this.object], type: INTERACTION_ACCESSED };
-	}
-
-	isSkippedAsOptional(origin: DeoptimizableEntity): boolean {
-		return (
-			!this.variable &&
-			!this.isUndefined &&
-			((this.object as ExpressionNode).isSkippedAsOptional?.(origin) ||
-				(this.optional &&
-					this.object.getLiteralValueAtPath(EMPTY_PATH, SHARED_RECURSION_TRACKER, origin) == null))
-		);
 	}
 
 	render(
@@ -348,7 +403,7 @@ export default class MemberExpression
 
 	protected applyDeoptimizations(): void {
 		this.deoptimized = true;
-		const { propertyReadSideEffects } = this.context.options
+		const { propertyReadSideEffects } = this.scope.context.options
 			.treeshake as NormalizedTreeshakingOptions;
 		if (
 			// Namespaces are not bound and should not be deoptimized
@@ -362,13 +417,17 @@ export default class MemberExpression
 				[propertyKey],
 				SHARED_RECURSION_TRACKER
 			);
-			this.context.requestTreeshakingPass();
+			this.scope.context.requestTreeshakingPass();
+		}
+		if (this.variable) {
+			this.variable.addUsedPlace(this);
+			this.scope.context.requestTreeshakingPass();
 		}
 	}
 
 	private applyAssignmentDeoptimization(): void {
 		this.assignmentDeoptimized = true;
-		const { propertyReadSideEffects } = this.context.options
+		const { propertyReadSideEffects } = this.scope.context.options
 			.treeshake as NormalizedTreeshakingOptions;
 		if (
 			// Namespaces are not bound and should not be deoptimized
@@ -381,7 +440,7 @@ export default class MemberExpression
 				[this.getPropertyKey()],
 				SHARED_RECURSION_TRACKER
 			);
-			this.context.requestTreeshakingPass();
+			this.scope.context.requestTreeshakingPass();
 		}
 	}
 
@@ -390,11 +449,11 @@ export default class MemberExpression
 			const variable = this.scope.findVariable(this.object.name);
 			if (variable.isNamespace) {
 				if (this.variable) {
-					this.context.includeVariableInModule(this.variable);
+					this.scope.context.includeVariableInModule(this.variable);
 				}
-				this.context.log(
+				this.scope.context.log(
 					LOGLEVEL_WARN,
-					logIllegalImportReassignment(this.object.name, this.context.module.id),
+					logIllegalImportReassignment(this.object.name, this.scope.context.module.id),
 					this.start
 				);
 			}
@@ -409,14 +468,14 @@ export default class MemberExpression
 				value === SymbolToStringTag
 					? value
 					: typeof value === 'symbol'
-					? UnknownKey
-					: String(value));
+						? UnknownKey
+						: String(value));
 		}
 		return this.propertyKey;
 	}
 
 	private hasAccessEffect(context: HasEffectsContext) {
-		const { propertyReadSideEffects } = this.context.options
+		const { propertyReadSideEffects } = this.scope.context.options
 			.treeshake as NormalizedTreeshakingOptions;
 		return (
 			!(this.variable || this.isUndefined) &&
@@ -437,7 +496,7 @@ export default class MemberExpression
 		if (!this.included) {
 			this.included = true;
 			if (this.variable) {
-				this.context.includeVariableInModule(this.variable);
+				this.scope.context.includeVariableInModule(this.variable);
 			}
 		}
 		this.object.include(context, includeChildrenRecursively);
